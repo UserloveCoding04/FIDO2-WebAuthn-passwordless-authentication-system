@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký khóa</title>
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f4f4f4; }
+        .card { background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.06) }
+        div { margin-bottom: 15px; }
+        h3 {color: #333; }
+        h1 {text-align: center; color: cadetblue;}
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], [type= "email"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { padding: 10px 15px; margin-right: 10px; border: none; border-radius: 4px; color: white; cursor: pointer; }
+        #btnRegister { background-color: #28a745; }
+        #btnLogin { background-color: #28a745; }
+        button:hover { opacity: 0.9; }
+        pre#log {white-space: pre-wrap; word-wrap: break-word; background: #fff; border: 1px solid #ddd; padding: 15px; min-height: 100px; border-radius: 4px; font-family: monospace; }
+        .error { color: #dc2545; }
+        .success { color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>Lab FIDO2</h1>
+    
+    <div class="card">
+        <form id="register-form">
+        <div>
+            <label for="r_username">Tên người dùng:</label>
+            <input type="text" id="r_username" placeholder="Nhập username" required>
+            <br>
+            <label for="r_email">Email:</label>
+            <input type="email" id="r_email" placeholder="Nhập email" required>
+        </div>
+
+        <button id="btnRegister">Đăng ký</button>
+        <br>
+        <div class="toggle-link">
+            <p>Bạn đã có tài khoản? <a href="#" id="show-login">Đăng nhập</a></p>
+        </div>
+
+    </form>
+        <form id="login-form">
+        <div>
+            <label for="l_username">Tên người dùng:</label>
+            <input type="text" id="l_username" placeholder="Nhập username" required>
+            <br>
+            <label for="email">Email:</label>
+            <input type="text" id="l_email" placeholder="Nhập email" required>
+        </div>
+
+        <button id="btnLogin">Đăng nhập</button>
+        <br>
+        <div class="toggle-link">
+            <p>Bạn chưa có tài khoản? <a href="#" id="show-register">Đăng ký</a></p>
+        </div>
+    </form>
+    </div>
+
+    <br><br><br><h3>Log kết quả (để test luồng):</h3>
+    <pre id="log">Trạng thái...</pre>
+
+    <script>
+        const r_usernameInput = document.getElementById('r_username');
+        const r_emailInput = document.getElementById('r_email');
+        const l_usernameInput = document.getElementById('l_username');
+        const l_emailInput = document.getElementById('l_email');
+        const btnRegister = document.getElementById('btnRegister');
+        const btnLogin = document.getElementById('btnLogin');
+        const log = document.getElementById('log');
+
+        //hiển thị form đăng nhập đăng ký
+        const loginForm = document.getElementById("login-form");
+        const registerForm = document.getElementById("register-form");
+        const showLogin = document.getElementById("show-login");
+        const showRegister = document.getElementById("show-register");
+
+        //hiển thị đăng ký
+        registerForm.style.display = "block";
+        loginForm.style.display = "none";
+
+        showLogin.addEventListener("click", () => {
+        loginForm.style.display = "block";
+        registerForm.style.display = "none";
+        });
+        showRegister.addEventListener("click", () => {
+        loginForm.style.display = "none";
+        registerForm.style.display = "block";
+        });
+
+        function bufferToBase64URL(buffer) {
+            return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+            // let binary = '';
+            // const bytes = new Uint8Array(buffer);
+            // for (let i = 0; i < bytes.length; i++) {
+            //     binary += String.fromCharCode(bytes[i]);
+            // }
+            // return btoa(String)
+            // .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function base64URLToBuffer(base64url) {
+            base64url = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            // const pad = base64url.length % 4;
+            // if (pad) {
+            //     base64url += '='.repeat(4 - pad);
+            // }   
+            // const raw = atob(base64url);
+            // const buffer = new Uint8Array(raw.length);
+            // const view = new Uint8Array(buffer);
+            // for (let i = 0; i < raw.length; i++) {
+            //     view[i] = raw.charCodeAt(i);
+            // }
+            // return buffer;
+            while (base64url.length % 4) base64url += '=';
+            const binary = atob(base64url);
+            const buffer = new ArrayBuffer(binary.length);
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return buffer;
+        }
+
+        //ghi log
+        function writeLog(message, isError = false) {
+            console.log(message);
+
+            let content = (typeof message == 'object') ? JSON.stringify(message, null, 2) : message;
+
+            if (isError) {
+                log.innerHTML = `<span class="error">${content}</span>`;
+            } else if (content.includes("success")) {
+                log.innerHTML = `<span class="success">${content}</span>`;
+            } else {
+                log.innerHTML = content;
+            }
+        }
+        //đăng ký
+        btnRegister.onclick = async () => {
+            const username = r_usernameInput.value;
+            const email = r_emailInput.value;
+            if (!username || !email) {
+                writeLog("Vui lòng nhập đầy đủ thông tin", true);
+                return;
+            }
+            try {
+                //lấy option và challenge
+                writeLog("Đang yêu cầu lấy option đăng ký");
+                const resp = await fetch ('/register/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username, email })
+                });
+
+                const options = await resp.json();
+                if (options.error) {
+                    throw new Error(options.error);
+                }
+
+                //chuyển đổi base64 qua arraybuffer
+                options.challenge = base64URLToBuffer(options.challenge);
+                options.user.id = base64URLToBuffer(options.user.id);
+
+                //gọi API web fido2
+                writeLog("Chạm vào khóa");
+                const cred = await navigator.credentials.create({ publicKey: options });
+                const rawIdBase64URL = bufferToBase64URL(cred.rawId);
+
+                //chuyển đổi nhị phân sang base64url text
+                const credJSON = {
+                    id: rawIdBase64URL,
+                    type: cred.type,
+                    rawId: bufferToBase64URL(cred.rawId),
+                    response: {
+                        clientDataJSON: bufferToBase64URL(cred.response.clientDataJSON),
+                        attestationObject: bufferToBase64URL(cred.response.attestationObject)
+                    },
+                };
+
+                //gửi kết quả về server kiểm tra
+                writeLog("Đang gửi kết quả về server");
+                const finishResp = await fetch('/register/finish', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body:JSON.stringify(credJSON)
+                });
+
+                const finishResult = await finishResp.json();
+                if (finishResult.error) {
+                    throw new Error(finishResult.error);
+                }
+
+                writeLog(finishResult);
+            } catch (error) {
+                writeLog("Đăng ký thất bại: " + error.message, true);
+            }
+        }
+
+        //đăng nhập
+        btnLogin.onclick = async () => {
+            const username = l_usernameInput.value;
+            const email = l_emailInput.value;
+            if (!username || !email) {
+                writeLog("Vui lòng nhập đầy đủ thông tin", true);
+                return;
+            }
+
+            try {
+                //lấy option và challenge từ server
+                writeLog("Đang yêu cầu options đăng nhập");
+                const resp = await fetch ('/login/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body:JSON.stringify({ username, email })
+                });
+
+                const options = await resp.json();
+                if (options.error) {
+                    throw new Error(options.error);
+                }
+
+                //chuyển đổi các giá trị base64 sang arraybuffer
+                options.challenge = base64URLToBuffer(options.challenge);
+                options.allowCredentials.forEach(cred => {
+                    cred.id = base64URLToBuffer(cred.id);
+                });
+
+                //gọi app web FIDO2 của trình duyệt
+                writeLog("Vui lòng chạm vào khóa an ninh");
+                const cred = await navigator.credentials.get({ publicKey:options })
+
+                //chuyển đổi kết quả sang base64url
+                const credJSON = {
+                    id: cred.id,
+                    type:cred.type,
+                    rawId: bufferToBase64URL(cred.rawId),
+                    response: {
+                        clientDataJSON: bufferToBase64URL(cred.response.clientDataJSON),
+                        authenticatorData: bufferToBase64URL(cred.response.authenticatorData),
+                        signature: bufferToBase64URL(cred.response.signature),
+                        userHandle: cred.response.userHandle ? bufferToBase64URL(cred.response.userHandle): null,
+                    },
+                };
+
+                //gửi chữ ký về server để kiểm tra
+                writeLog("Đang gửi chữ ký về server...");
+                const finishResp = await fetch('/login/finish', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(credJSON)
+                });
+
+                const finishResult = await finishResp.json();
+                if (finishResult.error) {
+                    throw new Error(finishResult.error);
+                }
+
+                writeLog(finishResult);
+                window.location.href = "/home";
+            } catch (error) { 
+                writeLog("Đăng nhập thất bại: " + error.message, true)
+            }
+        };
+    </script>
+</body>
+</html>
